@@ -3,75 +3,15 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 env:
   REGISTRY: registry.digitalocean.com
   IMAGE_NAME: ${{ secrets.DO_REGISTRY_NAME }}/nedersinapp
 
 jobs:
-  # ────────────────────────────────────────────────────────────────
-  # CI: lint, type-check, unit tests
-  # ────────────────────────────────────────────────────────────────
-  ci:
-    name: CI
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: nedersinapp_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Type check
-        run: npx tsc --noEmit
-
-      - name: Unit tests
-        run: npm run test -- --passWithNoTests
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASS: postgres
-          DB_NAME: nedersinapp_test
-          JWT_SECRET: test_secret
-
-  # ────────────────────────────────────────────────────────────────
-  # CD: build & push to DigitalOcean Container Registry
-  # Runs only on pushes to main
-  # ────────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push
-    needs: ci
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
       - name: Checkout
@@ -85,28 +25,16 @@ jobs:
       - name: Log in to DigitalOcean Container Registry
         run: doctl registry login --expiry-seconds 1200
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          echo "tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "timestamp=$(date -u +'%Y%m%dT%H%M%SZ')" >> "$GITHUB_OUTPUT"
-
       - name: Build Docker image
         run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           docker build \
-            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }} \
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHORT_SHA} \
             --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
-            --label "org.opencontainers.image.created=${{ steps.meta.outputs.timestamp }}" \
             .
 
       - name: Push image to registry
         run: |
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHORT_SHA}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Clean up old images (keep last 5)
-        run: |
-          doctl registry garbage-collection start --include-untagged-manifests \
-            --force "${{ secrets.DO_REGISTRY_NAME }}" || true

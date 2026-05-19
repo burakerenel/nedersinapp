@@ -29,7 +29,8 @@ export class CreateUserDto {
   @IsString()
   @MinLength(8)
   @Matches(/(?=.*[A-Z])(?=.*[0-9])/, {
-    message: 'password must contain at least one uppercase letter and one number',
+    message:
+      'password must contain at least one uppercase letter and one number',
   })
   password: string;
 
@@ -38,7 +39,10 @@ export class CreateUserDto {
   @Match('password', { message: 'passwordConfirmation must match password' })
   passwordConfirmation: string;
 
-  @ApiProperty({ example: true, description: 'Terms and conditions must be accepted' })
+  @ApiProperty({
+    example: true,
+    description: 'Terms and conditions must be accepted',
+  })
   @IsBoolean()
   @Equals(true, { message: 'You must accept the terms and conditions' })
   termsAccepted: boolean;

@@ -10,29 +10,15 @@ export class CarsController {
   // ── Brands ──────────────────────────────────────────────────────────────
 
   @Get('brands')
-  @ApiOperation({ summary: 'List all brands with models and sub-models' })
+  @ApiOperation({ summary: 'List all brands (id, name, logo)' })
   findAllBrands() {
     return this.carsService.findAllBrands();
   }
 
   @Get('brands/:id')
-  @ApiOperation({ summary: 'Get a single brand' })
+  @ApiOperation({ summary: 'Get a brand with its models and sub-models' })
   findBrand(@Param('id', ParseUUIDPipe) id: string) {
     return this.carsService.findBrandById(id);
-  }
-
-  // ── Models ───────────────────────────────────────────────────────────────
-
-  @Get('models')
-  @ApiOperation({ summary: 'List all models with brand and sub-models' })
-  findAllModels() {
-    return this.carsService.findAllModels();
-  }
-
-  @Get('models/:id')
-  @ApiOperation({ summary: 'Get a single model' })
-  findModel(@Param('id', ParseUUIDPipe) id: string) {
-    return this.carsService.findModelById(id);
   }
 
   // ── SubModels ─────────────────────────────────────────────────────────────

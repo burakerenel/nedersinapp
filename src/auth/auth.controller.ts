@@ -6,8 +6,6 @@ import {
   HttpStatus,
   UseGuards,
   Get,
-  ClassSerializerInterceptor,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -28,7 +26,6 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @UseInterceptors(ClassSerializerInterceptor)
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 409, description: 'Email already in use' })
@@ -48,7 +45,6 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(ClassSerializerInterceptor)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current authenticated user' })
   @ApiResponse({ status: 200, description: 'Returns current user' })

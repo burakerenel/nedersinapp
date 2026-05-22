@@ -17,7 +17,7 @@ export class CarsService {
   ) {}
 
   async findAllBrands(): Promise<Brand[]> {
-    return this.brandRepo.find({ relations: ['models', 'models.subModels'] });
+    return this.brandRepo.find();
   }
 
   async findBrandById(id: string): Promise<Brand> {
@@ -27,10 +27,6 @@ export class CarsService {
     });
     if (!brand) throw new NotFoundException('Brand not found');
     return brand;
-  }
-
-  async findAllModels(): Promise<CarModel[]> {
-    return this.carModelRepo.find({ relations: ['brand', 'subModels'] });
   }
 
   async findModelById(id: string): Promise<CarModel> {

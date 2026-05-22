@@ -7,31 +7,43 @@ import { CarsService } from './cars.service';
 export class CarsController {
   constructor(private readonly carsService: CarsService) {}
 
-  // ── Brands ──────────────────────────────────────────────────────────────
-
   @Get('brands')
-  @ApiOperation({ summary: 'List all brands (id, name, logo)' })
+  @ApiOperation({ summary: 'List all brands' })
   findAllBrands() {
     return this.carsService.findAllBrands();
   }
 
-  @Get('brands/:id')
-  @ApiOperation({ summary: 'Get a brand with its models and sub-models' })
-  findBrand(@Param('id', ParseUUIDPipe) id: string) {
-    return this.carsService.findBrandById(id);
+  @Get('brands/:brandId')
+  @ApiOperation({ summary: 'Get a brand with its models' })
+  findBrand(@Param('brandId', ParseUUIDPipe) brandId: string) {
+    return this.carsService.findBrandById(brandId);
   }
 
-  // ── SubModels ─────────────────────────────────────────────────────────────
-
-  @Get('sub-models')
-  @ApiOperation({ summary: 'List all sub-models (brand, model, name, engineCC, year)' })
-  findAllSubModels() {
-    return this.carsService.findAllSubModels();
+  @Get('brands/:brandId/models/:modelId')
+  @ApiOperation({ summary: 'Get a model under a brand' })
+  findModel(
+    @Param('brandId', ParseUUIDPipe) brandId: string,
+    @Param('modelId', ParseUUIDPipe) modelId: string,
+  ) {
+    return this.carsService.findModelById(brandId, modelId);
   }
 
-  @Get('sub-models/:id')
+  @Get('brands/:brandId/models/:modelId/sub-models')
+  @ApiOperation({ summary: 'List sub-models of a model' })
+  findSubModels(
+    @Param('brandId', ParseUUIDPipe) brandId: string,
+    @Param('modelId', ParseUUIDPipe) modelId: string,
+  ) {
+    return this.carsService.findSubModelsByModelId(brandId, modelId);
+  }
+
+  @Get('brands/:brandId/models/:modelId/sub-models/:subModelId')
   @ApiOperation({ summary: 'Get a single sub-model' })
-  findSubModel(@Param('id', ParseUUIDPipe) id: string) {
-    return this.carsService.findSubModelById(id);
+  findSubModel(
+    @Param('brandId', ParseUUIDPipe) brandId: string,
+    @Param('modelId', ParseUUIDPipe) modelId: string,
+    @Param('subModelId', ParseUUIDPipe) subModelId: string,
+  ) {
+    return this.carsService.findSubModelById(brandId, modelId, subModelId);
   }
 }

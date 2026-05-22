@@ -23,28 +23,31 @@ export class CarsService {
   async findBrandById(id: string): Promise<Brand> {
     const brand = await this.brandRepo.findOne({
       where: { id },
-      relations: ['models', 'models.subModels'],
+      relations: ['models'],
     });
     if (!brand) throw new NotFoundException('Brand not found');
     return brand;
   }
 
-  async findModelById(id: string): Promise<CarModel> {
+  async findModelById(brandId: string, modelId: string): Promise<CarModel> {
     const model = await this.carModelRepo.findOne({
-      where: { id },
+      where: { id: modelId, brand: { id: brandId } },
       relations: ['brand', 'subModels'],
     });
     if (!model) throw new NotFoundException('Car model not found');
     return model;
   }
 
-  async findAllSubModels(): Promise<CarSubModel[]> {
-    return this.subModelRepo.find({ relations: ['model', 'model.brand'] });
+  async findSubModelsByModelId(brandId: string, modelId: string): Promise<CarSubModel[]> {
+    return this.subModelRepo.find({
+      where: { model: { id: modelId, brand: { id: brandId } } },
+      relations: ['model', 'model.brand'],
+    });
   }
 
-  async findSubModelById(id: string): Promise<CarSubModel> {
+  async findSubModelById(brandId: string, modelId: string, subModelId: string): Promise<CarSubModel> {
     const sub = await this.subModelRepo.findOne({
-      where: { id },
+      where: { id: subModelId, model: { id: modelId, brand: { id: brandId } } },
       relations: ['model', 'model.brand'],
     });
     if (!sub) throw new NotFoundException('Car sub-model not found');

@@ -45,9 +45,22 @@ export class CarsService {
     });
   }
 
-  async findSubModelById(brandId: string, modelId: string, subModelId: string): Promise<CarSubModel> {
+  async findSubModelById(
+    brandId: string,
+    modelId: string,
+    subModelId: string,
+  ): Promise<CarSubModel> {
     const sub = await this.subModelRepo.findOne({
       where: { id: subModelId, model: { id: modelId, brand: { id: brandId } } },
+      relations: ['model', 'model.brand'],
+    });
+    if (!sub) throw new NotFoundException('Car sub-model not found');
+    return sub;
+  }
+
+  async findSubModelByIdOnly(id: string): Promise<CarSubModel> {
+    const sub = await this.subModelRepo.findOne({
+      where: { id },
       relations: ['model', 'model.brand'],
     });
     if (!sub) throw new NotFoundException('Car sub-model not found');

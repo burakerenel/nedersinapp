@@ -14,13 +14,13 @@ export class ReviewsService {
   ) {}
 
   async create(userId: string, dto: CreateReviewDto): Promise<Review> {
-    await this.carsService.findSubModelById(dto.carSubModelId);
+    await this.carsService.findSubModelByIdOnly(dto.carSubModelId);
     const review = this.reviewRepo.create({ userId, ...dto });
     return this.reviewRepo.save(review);
   }
 
   async findBySubModel(carSubModelId: string): Promise<Review[]> {
-    await this.carsService.findSubModelById(carSubModelId);
+    await this.carsService.findSubModelByIdOnly(carSubModelId);
     return this.reviewRepo.find({
       where: { carSubModelId },
       relations: ['user'],

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Review } from './review.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { CarsService } from '../cars/cars.service';
+import { ReviewResponseDto } from './dto/review-response.dto';
 
 @Injectable()
 export class ReviewsService {
@@ -19,12 +20,24 @@ export class ReviewsService {
     return this.reviewRepo.save(review);
   }
 
-  async findBySubModel(carSubModelId: string): Promise<Review[]> {
+  async findBySubModel(carSubModelId: string): Promise<ReviewResponseDto[]> {
     await this.carsService.findSubModelByIdOnly(carSubModelId);
-    return this.reviewRepo.find({
+    const reviews = await this.reviewRepo.find({
       where: { carSubModelId },
       relations: ['user'],
       order: { createdAt: 'DESC' },
     });
+
+    return reviews.map((r) => ({
+      id: r.id,
+      content: r.content,
+      carSubModelId: r.carSubModelId,
+      createdAt: r.createdAt,
+      user: {
+        id: r.user.id,
+        firstName: r.user.firstName,
+        lastName: r.user.lastName,
+      },
+    }));
   }
 }

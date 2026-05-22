@@ -29,9 +29,9 @@ export class CarsService {
     return brand;
   }
 
-  async findModelById(brandId: string, modelId: string): Promise<CarModel> {
+  async findModelById(modelId: string): Promise<CarModel> {
     const model = await this.carModelRepo.findOne({
-      where: { id: modelId, brand: { id: brandId } },
+      where: { id: modelId },
       relations: ['brand', 'subModels'],
     });
     if (!model) throw new NotFoundException('Car model not found');

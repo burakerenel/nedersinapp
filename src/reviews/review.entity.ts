@@ -22,7 +22,7 @@ export class Review {
   @Column({ nullable: true, type: 'varchar', length: 255 })
   title: string | null;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', default: 0 })
   rating: number;
 
   @Column({ nullable: true, type: 'int' })

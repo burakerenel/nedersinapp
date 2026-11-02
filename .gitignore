@@ -28,3 +28,7 @@ coverage/
 
 # Uploaded files
 uploads/
+
+# Ham veri (yerelde tutulur, repoya girmez)
+*.csv
+import_data/__pycache__/

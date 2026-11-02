@@ -5,13 +5,18 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { CarSubModel } from '../cars/entities/car-sub-model.entity';
 import { ReviewLike } from './entities/review-like.entity';
+import { ReviewImage } from '../uploads/review-image.entity';
+import { CategoryRatings, UsageDuration } from './dto/create-review.dto';
 
 @Entity('reviews')
+@Index(['userId', 'carSubModelId'])
 export class Review {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -31,6 +36,26 @@ export class Review {
   @Column({ type: 'simple-array', nullable: true })
   topics: string[];
 
+  /** 6 kategori puanı: comfort, interior, performance, value, exterior, reliability (1-5). */
+  @Column({ name: 'category_ratings', type: 'jsonb', nullable: true })
+  categoryRatings: CategoryRatings | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  recommends: boolean | null;
+
+  @Column({
+    name: 'usage_duration',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
+  usageDuration: UsageDuration | null;
+
+  /** Başlık + metin + konular, küçük harf ve Türkçe karakterleri sadeleştirilmiş (arama). */
+  @Column({ name: 'search_text', type: 'text', nullable: true })
+  searchText: string | null;
+
+  @Index()
   @Column({ name: 'user_id' })
   userId: string;
 
@@ -38,6 +63,7 @@ export class Review {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
+  @Index()
   @Column({ name: 'car_sub_model_id' })
   carSubModelId: string;
 
@@ -48,8 +74,12 @@ export class Review {
   @OneToMany(() => ReviewLike, (like) => like.review)
   likes: ReviewLike[];
 
-  likesCount?: number;
+  @OneToMany(() => ReviewImage, (img) => img.review)
+  images: ReviewImage[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }

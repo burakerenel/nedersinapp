@@ -1,46 +1,46 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CategoryRatings, UsageDuration } from './create-review.dto';
+
 export class ReviewUserDto {
-  id: string;
-  firstName: string;
-  lastName: string;
+  @ApiProperty() id: string;
+  @ApiProperty() firstName: string;
+  @ApiProperty() lastName: string;
 }
 
 export class ReviewCarSubModelDto {
-  id: string;
-  name: string;
-  model: { name: string; brand: { name: string } };
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiPropertyOptional({ nullable: true }) trimName: string | null;
+  @ApiPropertyOptional({ nullable: true }) generation: string | null;
+  @ApiPropertyOptional({ nullable: true }) yearFrom: number | null;
+  @ApiPropertyOptional({ nullable: true }) yearTo: number | null;
+  @ApiProperty() model: {
+    id: string;
+    name: string;
+    brand: { id: string; name: string };
+  };
 }
 
+/** Tüm yorum listelerinde (sub-model / recent / me) ortak yorum objesi. */
 export class ReviewResponseDto {
-  id: string;
-  content: string;
-  title: string | null;
-  rating: number;
-  kilometer: number | null;
-  topics: string[];
-  likesCount: number;
-  carSubModelId: string;
-  createdAt: Date;
-  user: ReviewUserDto;
-}
-
-export class RecentReviewResponseDto {
-  id: string;
-  content: string;
-  title: string | null;
-  rating: number;
-  createdAt: Date;
-  user: ReviewUserDto;
-  carSubModel: ReviewCarSubModelDto;
-}
-
-export class MyReviewResponseDto {
-  id: string;
-  content: string;
-  title: string | null;
-  rating: number;
-  kilometer: number | null;
-  topics: string[];
-  likesCount: number;
-  createdAt: Date;
-  carSubModel: ReviewCarSubModelDto;
+  @ApiProperty() id: string;
+  @ApiProperty() content: string;
+  @ApiPropertyOptional({ nullable: true }) title: string | null;
+  @ApiProperty() rating: number;
+  @ApiPropertyOptional({ nullable: true }) kilometer: number | null;
+  @ApiProperty({ type: [String] }) topics: string[];
+  @ApiPropertyOptional({ nullable: true })
+  categoryRatings: CategoryRatings | null;
+  @ApiPropertyOptional({ nullable: true }) recommends: boolean | null;
+  @ApiPropertyOptional({ nullable: true }) usageDuration: UsageDuration | null;
+  @ApiProperty({ type: [String] }) images: string[];
+  @ApiProperty() likesCount: number;
+  @ApiProperty() isLikedByMe: boolean;
+  @ApiProperty() isMine: boolean;
+  @ApiProperty() carSubModelId: string;
+  @ApiProperty() createdAt: Date;
+  @ApiProperty() updatedAt: Date;
+  @ApiProperty({ type: ReviewUserDto }) user: ReviewUserDto;
+  @ApiPropertyOptional({ type: ReviewCarSubModelDto })
+  carSubModel?: ReviewCarSubModelDto;
 }

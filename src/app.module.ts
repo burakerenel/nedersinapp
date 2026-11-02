@@ -7,16 +7,20 @@ import { UsersModule } from './users/users.module';
 import { CarsModule } from './cars/cars.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { FavoritesModule } from './favorites/favorites.module';
+import { MailModule } from './mail/mail.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot(databaseConfig()),
+    MailModule,
     AuthModule,
     UsersModule,
     CarsModule,
     ReviewsModule,
     FavoritesModule,
+    UploadsModule,
   ],
 })
 export class AppModule {}

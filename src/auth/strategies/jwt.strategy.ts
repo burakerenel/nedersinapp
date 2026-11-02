@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../auth.service';
+import { ApiException } from '../../common/exceptions/api.exception';
 
 interface JwtPayload {
   sub: string;
@@ -19,6 +20,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
-    return this.authService.validateUser(payload.sub);
+    const user = await this.authService.validateUser(payload.sub);
+    // Silinmiş hesabın eski token'ı → 401
+    if (!user) throw ApiException.unauthorized();
+    return user;
   }
 }

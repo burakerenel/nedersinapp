@@ -5,9 +5,14 @@ import { ReviewLike } from './entities/review-like.entity';
 import { ReviewsService } from './reviews.service';
 import { ReviewsController } from './reviews.controller';
 import { CarsModule } from '../cars/cars.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Review, ReviewLike]), CarsModule],
+  imports: [
+    TypeOrmModule.forFeature([Review, ReviewLike]),
+    CarsModule,
+    UploadsModule,
+  ],
   providers: [ReviewsService],
   controllers: [ReviewsController],
 })

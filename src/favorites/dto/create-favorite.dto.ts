@@ -3,6 +3,6 @@ import { IsUUID } from 'class-validator';
 
 export class CreateFavoriteDto {
   @ApiProperty({ example: 'uuid-of-car-sub-model' })
-  @IsUUID()
+  @IsUUID('all', { message: 'geçerli bir araç kimliği olmalı' })
   carSubModelId: string;
 }

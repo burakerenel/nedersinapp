@@ -19,6 +19,7 @@ import { User } from './user.entity';
 import { UsersService } from './users.service';
 import { UpdatePasswordDto } from './dto/update-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -26,7 +27,9 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get(':id/card')
-  @ApiOperation({ summary: 'Get public user card (first name + masked last name)' })
+  @ApiOperation({
+    summary: 'Get public user card (first name + masked last name)',
+  })
   @ApiResponse({ status: 200 })
   @ApiResponse({ status: 404 })
   async getUserCard(@Param('id', ParseUUIDPipe) id: string) {
@@ -38,9 +41,13 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update current user profile' })
-  @ApiResponse({ status: 200 })
-  updateProfile(@CurrentUser() user: User, @Body() dto: UpdateProfileDto) {
-    return this.usersService.updateProfile(user.id, dto);
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  async updateProfile(
+    @CurrentUser() user: User,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    const updated = await this.usersService.updateProfile(user.id, dto);
+    return UserResponseDto.from(updated);
   }
 
   @Patch('me/password')
@@ -54,6 +61,6 @@ export class UsersController {
     @Body() dto: UpdatePasswordDto,
   ) {
     await this.usersService.updatePassword(user.id, dto);
-    return { message: 'Password updated successfully' };
+    return { message: 'Şifre güncellendi' };
   }
 }

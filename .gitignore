@@ -27,7 +27,7 @@ Thumbs.db
 coverage/
 
 # Uploaded files
-uploads/
+/uploads/
 
 # Ham veri (yerelde tutulur, repoya girmez)
 *.csv

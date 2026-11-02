@@ -63,7 +63,8 @@ Swagger `/api/docs` güncel listedir. Özet:
   `GET /reviews/sub-model/{id}?sort=newest|highest|lowest|mostLiked&q=&topic=&ratings=1,2&page=&limit=`
   (public; token gelirse `isMine`, `isLikedByMe` dolar)
 - **Fotoğraf**: `POST /uploads/review-images` (multipart `file`, jpg/png/heic, ≤5 MB) → `{ id, url }`;
-  yoruma `imageIds` (≤2) ile bağlanır. 24 saat içinde bağlanmayanlar silinir.
+  yoruma `imageIds` (≤2) ile bağlanır. 24 saat içinde bağlanmayanlar silinir. Depo: DigitalOcean
+  Spaces (`SPACES_*` env, public-read + CDN URL); env yoksa yerel disk (`UPLOADS_DIR`, `/uploads/`).
 - **Garajım**: `POST /favorites`, `GET /favorites`, `DELETE /favorites/{id}`
 
 ### Alt model alanları
@@ -94,7 +95,9 @@ Yorum kaydedilirken başlık + metin + konular küçük harfe çevrilip Türkçe
 
 ## Dağıtım notları
 
-- Fotoğraflar diske yazılır (`UPLOADS_DIR`); container yeniden kurulduğunda kaybolmaması için volume
-  bağlanmalı ya da ileride S3/Spaces'e taşınmalı.
+- Fotoğraflar DigitalOcean Spaces'e yazılır: `SPACES_BUCKET`, `SPACES_KEY`, `SPACES_SECRET`,
+  `SPACES_REGION` (fra1), `SPACES_PUBLIC_URL` (CDN). Bucket'ta dosya erişimi "public" ya da nesne
+  bazlı `public-read` ACL açık olmalı (kod nesneleri `public-read` ile yükler). `SPACES_*` boşsa
+  yerel diske düşer; bu sadece geliştirme için uygundur.
 - Üretim imajı `NODE_ENV=production` ile `synchronize` kapalıdır; yeni kolonlar test DB'ye yerelden
   (`npm run start`) ya da `DB_SYNC=true` ile uygulanır.

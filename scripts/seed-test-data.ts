@@ -98,9 +98,10 @@ const CARS: SeedCar[] = [
     brand: 'Fiat',
     model: 'Egea',
     prefer: [
-      /^Egea \(356\) · 1\.3 Multijet II \(95 bg\) 2016 - 2019$/,
-      /Egea \(356\) · 1\.3 Multijet/,
-      /Egea/,
+      /^1\.3 Multijet Easy$/,
+      /^1\.3 Multijet/,
+      /Multijet/,
+      /./,
     ],
     specs: { fuelType: 'diesel', transmission: 'manual', bodyType: 'sedan' },
     bias: {
@@ -253,10 +254,10 @@ const CARS: SeedCar[] = [
     brand: 'Renault',
     model: 'Clio',
     prefer: [
-      /^Clio V \(Phase I\) · 1\.0 TCe \(100 bg\) 2019/,
-      /Clio V \(Phase I\) · 1\.0 TCe/,
-      /Clio V/,
-      /Clio/,
+      /^1\.0 TCe Joy$/,
+      /^1\.0 TCe/,
+      /TCe/,
+      /./,
     ],
     specs: {
       fuelType: 'gasoline',
@@ -404,10 +405,10 @@ const CARS: SeedCar[] = [
     brand: 'Toyota',
     model: 'Corolla',
     prefer: [
-      /^Corolla XII \(E210, facelift 2022\) · 1\.8 \(140 bg\) Hybrid e-CVT 2023$/,
-      /Corolla XII .*1\.8 .*Hybrid/,
-      /Corolla XII/,
-      /Corolla/,
+      /^1\.8 Hybrid Dream$/,
+      /^1\.8 Hybrid/,
+      /Hybrid/,
+      /./,
     ],
     specs: { fuelType: 'hybrid', transmission: 'automatic', bodyType: 'sedan' },
     bias: {
@@ -542,10 +543,10 @@ const CARS: SeedCar[] = [
     brand: 'Hyundai',
     model: 'i20',
     prefer: [
-      /^i20 III \(facelift 2023\) · 1\.0 T-GDi \(100 bg\) DCT 2023$/,
-      /i20 III .*1\.0 T-GDi .*DCT/,
-      /i20 III/,
-      /i20/,
+      /^1\.0 T-GDI Style$/i,
+      /^1\.0 T-GDI/i,
+      /T-GDI/i,
+      /./,
     ],
     specs: {
       fuelType: 'gasoline',
@@ -675,11 +676,11 @@ const CARS: SeedCar[] = [
     brand: 'Volkswagen',
     model: 'Passat',
     prefer: [
-      /^Passat \(B8, facelift 2019\) · 1\.6 TDI/,
-      /^Passat \(B8, facelift 2019\) · 2\.0 TDI \(150 bg\) DSG/,
-      /^Passat \(B8, facelift 2019\) · 2\.0 TDI/,
-      /^Passat \(B8/,
-      /Passat/,
+      /^1\.6 TDi Comfortline$/i,
+      /^2\.0 TDi DSG/i,
+      /^2\.0 TDi/i,
+      /TDi/i,
+      /./,
     ],
     specs: { fuelType: 'diesel', transmission: 'automatic', bodyType: 'sedan' },
     bias: {

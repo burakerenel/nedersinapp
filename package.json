@@ -18,6 +18,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "import:arabam": "ts-node --transpile-only scripts/import-arabam-tree.ts",
     "backfill:sub-models": "ts-node --transpile-only scripts/backfill-sub-models.ts",
     "seed:test-data": "ts-node --transpile-only scripts/seed-test-data.ts"
   },

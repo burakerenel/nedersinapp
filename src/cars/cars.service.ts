@@ -399,14 +399,16 @@ export class CarsService {
       qb.andWhere('sub.bodyType = :bodyType', { bodyType: dto.bodyType });
     if (dto.fuelType)
       qb.andWhere('sub.fuelType = :fuelType', { fuelType: dto.fuelType });
-    // Üretim aralığı filtreyle kesişen alt modeller
+    // Üretim aralığı filtreyle kesişen alt modeller. Yılı bilinmeyen kayıtlar
+    // (year = 0, yearFrom/yearTo NULL; arabam.com kaynağında yıl yok) dışlanmaz.
     if (dto.yearFrom) {
-      qb.andWhere('COALESCE(sub.yearTo, sub.yearFrom, sub.year, 9999) >= :yf', {
-        yf: dto.yearFrom,
-      });
+      qb.andWhere(
+        'COALESCE(sub.yearTo, sub.yearFrom, NULLIF(sub.year, 0), 9999) >= :yf',
+        { yf: dto.yearFrom },
+      );
     }
     if (dto.yearTo) {
-      qb.andWhere('COALESCE(sub.yearFrom, sub.year) <= :yt', {
+      qb.andWhere('COALESCE(sub.yearFrom, NULLIF(sub.year, 0), 0) <= :yt', {
         yt: dto.yearTo,
       });
     }

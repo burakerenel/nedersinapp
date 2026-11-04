@@ -16,7 +16,8 @@ Docker ile geliştirme: `docker compose -f docker/dev/docker-compose.yml up`.
 
 | Komut | Ne yapar |
 | --- | --- |
-| `python3 import_data/import_araclar.py` | `araclar_secenekli.csv` → brands / car_models / car_sub_models (tabloları sıfırlar) |
+| `npm run import:arabam` | `import_data/arabam-nodes.csv` (arabam.com ağacı: marka → seri → motor → donanım) → brands / car_models / car_sub_models (tabloları sıfırlar; `-- --dry` ile sadece istatistik). Alt model adı `"<motor> <donanım>"`, yıl/beygir yok. fuel/transmission/body import sırasında dolar, backfill gerekmez. |
+| `python3 import_data/import_araclar.py` | (eski kaynak) `araclar_secenekli.csv` → aynı tablolar |
 | `npm run backfill:sub-models` | Alt model adını ayrıştırır: `trimName`, `generation`, `horsePower`, `yearFrom`, `yearTo`, `fuelType`, `transmission`, `bodyType`. Import sonrası bir kez çalıştır; idempotent. `-- --dry` ile sadece istatistik basar. |
 | `npm run seed:test-data` | Test ortamı için 5 araca (Egea, Clio, Corolla, i20, Passat) 12-15'er yorum, kronik sorun ve beğeni ekler. Seed kullanıcıları `seed+1..20@nedersin.test`, şifre `Seed1234`. Idempotent. |
 

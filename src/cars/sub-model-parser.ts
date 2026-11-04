@@ -118,7 +118,7 @@ export function inferFuelType(spec: string): FuelType | null {
     return 'diesel';
   }
   if (
-    /\d\.\d|\b\d{3,4}\b|\btsi\b|\btfsi\b|\bfsi\b|\bmpi\b|\bgdi\b|t-gdi|\btce\b|\bsce\b|\bvti\b|\bthp\b|puretech|firefly|\bfire\b|twinair|twin air|ecoboost|turbo|\bi\b|16v|8v|12v|\bv6\b|\bv8\b|\bv10\b|\bv12\b|\bgti\b|petrol|benzin|skyactiv-g|vvt|\bvtec\b|\bi-vtec\b|\bdohc\b|\bgsi\b|\bts\b|\bie\b|\bi\.e\.\b/.test(
+    /\d\.\d|\b\d{3,4}\b|\b\d{3}i\b|\btsi\b|\btfsi\b|\bfsi\b|\bmpi\b|\bgdi\b|t-gdi|\btce\b|\bsce\b|\bvti\b|\bthp\b|puretech|firefly|\bfire\b|twinair|twin air|ecoboost|turbo|\bi\b|16v|8v|12v|\bv6\b|\bv8\b|\bv10\b|\bv12\b|\bgti\b|petrol|benzin|skyactiv-g|vvt|\bvtec\b|\bi-vtec\b|\bdohc\b|\bgsi\b|\bts\b|\bie\b|\bi\.e\.\b/.test(
       s,
     )
   ) {

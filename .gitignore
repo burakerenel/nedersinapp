@@ -31,4 +31,5 @@ coverage/
 
 # Ham veri (yerelde tutulur, repoya girmez)
 *.csv
+import_data/arabam/*.json
 import_data/__pycache__/

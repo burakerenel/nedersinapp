@@ -1,11 +1,16 @@
 /**
- * arabam.com ikinci el ağacı (nodes.csv) → brands / car_models / car_sub_models
+ * arabam.com ikinci el ağaçları (tree_*.json) → brands / car_models / car_sub_models
+ *
+ * Varsayılan kaynak: import_data/arabam/tree_otomobil.json,
+ * tree_minivan-panelvan.json, tree_arazi-suv-pick-up.json (motosiklet ağacı
+ * 2 seviyeli ve araç değil; dahil edilmez). Aynı marka/seri birden fazla
+ * ağaçta geçerse tek kayda birleştirilir.
  *
  * Kaynak 4 seviye, DB 3 seviye:
- *   marka   (depth 1) → brands.name              ("Mercedes - Benz" → "Mercedes-Benz")
- *   seri    (depth 2) → car_models.name          ("Egea", "Clio", "3 Serisi")
- *   model   (depth 3) → alt modelin motor/gövde kısmı   ("1.3 Multijet", "A4 Avant", "320i")
- *   donanım (depth 4) → alt modelin donanım kısmı       ("Easy", "Comfortline")
+ *   marka   (level marka)   → brands.name              ("Mercedes - Benz" → "Mercedes-Benz")
+ *   seri    (level seri)    → car_models.name          ("Egea", "Doblo", "3 Serisi")
+ *   model   (level model)   → alt modelin motor/gövde kısmı   ("1.3 Multijet", "A4 Avant", "320i")
+ *   donanım (level donanim) → alt modelin donanım kısmı       ("Easy", "Comfortline")
  *
  *   car_sub_models.name = "<model> <donanım>"   → "1.3 Multijet Easy"
  *                         "<model>"             → donanım yoksa ya da donanım == model
@@ -15,7 +20,8 @@
  * year_to / generation = NULL. engine_cc litre ifadesinden ("1.3" → 1300), yoksa 0
  * ("520d", "C 200" gibi sayılar model kodudur, hacim sayılmaz).
  * trim_name = name; fuel_type / transmission / body_type src/cars/sub-model-parser
- * sezgileriyle doldurulur (backfill çalıştırmak gerekmez).
+ * sezgileriyle, body_type çıkarılamazsa ağacın kategorisinden (arazi → suv,
+ * minivan → mpv) doldurulur. Backfill çalıştırmak gerekmez.
  *
  * TRUNCATE brands CASCADE → car_models, car_sub_models, reviews, favorites,
  * review_likes dahil hepsi silinir ve sıfırdan yüklenir.
@@ -23,7 +29,7 @@
  *   npm run import:arabam -- --dry          # DB'ye dokunmaz, istatistik + örnek basar
  *   npm run import:arabam                   # onay ister
  *   npm run import:arabam -- --yes          # onay sormaz
- *   npm run import:arabam -- path/to/nodes.csv
+ *   npm run import:arabam -- a.json b.json  # sadece verilen ağaçlar
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -41,12 +47,19 @@ import type {
   Transmission,
 } from '../src/cars/entities/car-sub-model.entity';
 
-const DEFAULT_CSV = path.resolve(
-  __dirname,
-  '..',
-  'import_data',
-  'arabam-nodes.csv',
-);
+const DATA_DIR = path.resolve(__dirname, '..', 'import_data', 'arabam');
+const DEFAULT_TREES = [
+  'tree_otomobil.json',
+  'tree_minivan-panelvan.json',
+  'tree_arazi-suv-pick-up.json',
+].map((f) => path.join(DATA_DIR, f));
+
+/** Ağacın kök kategorisi → ad üzerinden çıkarılamayan kasa tipi. */
+const CATEGORY_BODY: Record<string, BodyType | null> = {
+  otomobil: null,
+  'minivan-panelvan': 'mpv',
+  'arazi-suv-pick-up': 'suv',
+};
 
 // "1.3", "2.0T", "0.9 TCe" → litre
 const LITRE_RE = /(?<![\d.])(\d{1,2}\.\d)(?![\d.])/;
@@ -54,7 +67,18 @@ const KWH_RE = /\d+\s*kWh/i;
 
 const BRAND_RENAMES: Record<string, string> = {
   'mercedes - benz': 'Mercedes-Benz',
+  'iveco - otoyol': 'Iveco',
 };
+
+interface TreeNode {
+  name: string;
+  path: string;
+  depth: number;
+  category: string;
+  level: string;
+  note?: string;
+  children?: TreeNode[];
+}
 
 interface Sub {
   name: string;
@@ -72,43 +96,12 @@ interface Brand {
   name: string;
   models: Map<string, Model>; // lower(name) → model
 }
-
-// ---------- CSV ----------
-
-function parseCsv(text: string): Record<string, string>[] {
-  const lines: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else quoted = false;
-      } else field += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === ',') {
-      row.push(field);
-      field = '';
-    } else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(field);
-      field = '';
-      lines.push(row);
-      row = [];
-    } else field += ch;
-  }
-  if (field !== '' || row.length) {
-    row.push(field);
-    lines.push(row);
-  }
-  const header = lines.shift()!.map((h) => h.replace(/^\uFEFF/, '').trim());
-  return lines
-    .filter((l) => l.length > 1)
-    .map((l) => Object.fromEntries(header.map((h, i) => [h, l[i] ?? ''])));
+interface Stats {
+  nodes: number;
+  dupSub: number;
+  seriOnly: number;
+  modelOnly: number;
+  trim: number;
 }
 
 // ---------- eşleme ----------
@@ -129,103 +122,105 @@ function parseEngineCC(name: string): number {
   return l ? Math.round(parseFloat(l[1]) * 1000) : 0;
 }
 
-function makeSub(modelName: string, name: string, isSeriOnly: boolean): Sub {
+function makeSub(
+  modelName: string,
+  name: string,
+  isSeriOnly: boolean,
+  categoryBody: BodyType | null,
+): Sub {
   return {
     name,
     engineCC: isSeriOnly ? 0 : parseEngineCC(name),
     trimName: isSeriOnly ? null : name,
     fuelType: inferFuelType(name),
     transmission: inferTransmission(name),
-    bodyType: inferBodyType(`${modelName} ${name}`),
+    bodyType: inferBodyType(`${modelName} ${name}`) ?? categoryBody,
   };
 }
 
-function addSub(model: Model, sub: Sub, stats: Stats): void {
-  const key = sub.name.toLowerCase();
-  if (model.subs.has(key)) {
-    stats.dupSub++;
-    return;
-  }
-  model.subs.set(key, sub);
-}
-
-interface Stats {
-  rows: number;
-  dupSub: number;
-  seriOnly: number;
-  modelOnly: number;
-  trim: number;
-}
-
-function buildTree(rows: Record<string, string>[]): {
-  brands: Map<string, Brand>;
-  stats: Stats;
-} {
-  const stats: Stats = {
-    rows: 0,
+class TreeBuilder {
+  readonly brands = new Map<string, Brand>();
+  readonly stats: Stats = {
+    nodes: 0,
     dupSub: 0,
     seriOnly: 0,
     modelOnly: 0,
     trim: 0,
   };
-  const brands = new Map<string, Brand>();
-  const childCount = new Map<string, number>();
-  for (const r of rows)
-    childCount.set(r.parent_path, (childCount.get(r.parent_path) ?? 0) + 1);
 
-  const getBrand = (raw: string): Brand => {
+  private getBrand(raw: string): Brand {
     const name = brandName(raw);
     const key = name.toLowerCase();
-    let b = brands.get(key);
-    if (!b) brands.set(key, (b = { name, models: new Map() }));
+    let b = this.brands.get(key);
+    if (!b) this.brands.set(key, (b = { name, models: new Map() }));
     return b;
-  };
-  const getModel = (b: Brand, raw: string): Model => {
+  }
+
+  private getModel(b: Brand, raw: string): Model {
     const name = norm(raw);
     const key = name.toLowerCase();
     let m = b.models.get(key);
     if (!m) b.models.set(key, (m = { name, subs: new Map() }));
     return m;
-  };
+  }
 
-  for (const r of rows) {
-    stats.rows++;
-    const depth = parseInt(r.depth, 10);
-    if (depth < 1 || !r.seviye_1) continue;
-    const brand = getBrand(r.seviye_1);
-    if (depth === 1) continue;
-
-    const model = getModel(brand, r.seviye_2);
-    const hasChildren = (childCount.get(r.path) ?? 0) > 0;
-
-    if (depth === 2) {
-      if (!hasChildren) {
-        stats.seriOnly++;
-        addSub(model, makeSub(model.name, model.name, true), stats);
-      }
-      continue;
+  private addSub(model: Model, sub: Sub): void {
+    const key = sub.name.toLowerCase();
+    if (model.subs.has(key)) {
+      this.stats.dupSub++;
+      return;
     }
+    model.subs.set(key, sub);
+  }
 
-    const motor = norm(r.seviye_3);
-    if (depth === 3) {
-      if (!hasChildren) {
-        stats.modelOnly++;
-        addSub(model, makeSub(model.name, motor, false), stats);
-      }
-      continue;
+  addTree(root: TreeNode): void {
+    const body = CATEGORY_BODY[root.category] ?? null;
+    if (!(root.category in CATEGORY_BODY)) {
+      console.warn(
+        `  ! bilinmeyen kategori "${root.category}" (${root.name}); kasa tipi varsayılanı yok`,
+      );
     }
-
-    if (depth === 4) {
-      const trim = norm(r.name);
-      // "1.6 TDi" + "1.6 TDi" ya da "2.0 CDTI" + "CDTi" → tekrar etme
-      const name = motor.toLowerCase().endsWith(trim.toLowerCase())
-        ? motor
-        : `${motor} ${trim}`;
-      stats.trim++;
-      addSub(model, makeSub(model.name, name, false), stats);
+    for (const marka of root.children ?? []) {
+      this.stats.nodes++;
+      const brand = this.getBrand(marka.name);
+      for (const seri of marka.children ?? []) {
+        this.stats.nodes++;
+        if (seri.level !== 'seri') {
+          console.warn(
+            `  ! ${marka.name} / ${seri.name}: beklenen seviye "seri", gelen "${seri.level}"; atlandı`,
+          );
+          continue;
+        }
+        const model = this.getModel(brand, seri.name);
+        const motors = seri.children ?? [];
+        if (motors.length === 0) {
+          this.stats.seriOnly++;
+          this.addSub(model, makeSub(model.name, model.name, true, body));
+          continue;
+        }
+        for (const motorNode of motors) {
+          this.stats.nodes++;
+          const motor = norm(motorNode.name);
+          const trims = motorNode.children ?? [];
+          if (trims.length === 0) {
+            this.stats.modelOnly++;
+            this.addSub(model, makeSub(model.name, motor, false, body));
+            continue;
+          }
+          for (const trimNode of trims) {
+            this.stats.nodes++;
+            const trim = norm(trimNode.name);
+            // "1.6 TDi" + "1.6 TDi" ya da "2.0 CDTI" + "CDTi" → tekrar etme
+            const name = motor.toLowerCase().endsWith(trim.toLowerCase())
+              ? motor
+              : `${motor} ${trim}`;
+            this.stats.trim++;
+            this.addSub(model, makeSub(model.name, name, false, body));
+          }
+        }
+      }
     }
   }
-  return { brands, stats };
 }
 
 // ---------- DB ----------
@@ -323,22 +318,32 @@ async function main() {
   const args = process.argv.slice(2);
   const dry = args.includes('--dry') || args.includes('--dry-run');
   const yes = args.includes('--yes') || args.includes('-y');
-  const csvPath = args.find((a) => !a.startsWith('-')) ?? DEFAULT_CSV;
+  const files = args.filter((a) => !a.startsWith('-'));
+  const treePaths = files.length
+    ? files.map((f) => path.resolve(f))
+    : DEFAULT_TREES;
 
-  if (!fs.existsSync(csvPath)) {
-    console.error(`CSV bulunamadı: ${csvPath}`);
-    process.exit(1);
+  const builder = new TreeBuilder();
+  for (const p of treePaths) {
+    if (!fs.existsSync(p)) {
+      console.error(`Ağaç dosyası bulunamadı: ${p}`);
+      process.exit(1);
+    }
+    const root = JSON.parse(fs.readFileSync(p, 'utf8')) as TreeNode;
+    const before = builder.stats.nodes;
+    builder.addTree(root);
+    console.log(
+      `${path.basename(p)}: ${root.name} (${root.category}) → ${builder.stats.nodes - before} düğüm`,
+    );
   }
-
-  const rows = parseCsv(fs.readFileSync(csvPath, 'utf8'));
-  const { brands, stats } = buildTree(rows);
+  const { brands, stats } = builder;
 
   const models = [...brands.values()].flatMap((b) => [...b.models.values()]);
   const subs = models.flatMap((m) => [...m.subs.values()]);
   const count = (f: (s: Sub) => unknown) => subs.filter((s) => f(s)).length;
 
   console.log(
-    `CSV: ${stats.rows} satır → ${brands.size} marka, ${models.length} model, ${subs.length} alt model`,
+    `Toplam: ${stats.nodes} düğüm → ${brands.size} marka, ${models.length} model, ${subs.length} alt model`,
   );
   console.log(
     `     donanım: ${stats.trim}, sadece motor: ${stats.modelOnly}, sadece seri: ${stats.seriOnly}, tekrar (atlandı): ${stats.dupSub}`,

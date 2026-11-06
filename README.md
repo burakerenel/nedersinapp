@@ -67,6 +67,13 @@ Swagger `/api/docs` güncel listedir. Özet:
   yoruma `imageIds` (≤2) ile bağlanır. 24 saat içinde bağlanmayanlar silinir. Depo: DigitalOcean
   Spaces (`SPACES_*` env, public-read + CDN URL); env yoksa yerel disk (`UPLOADS_DIR`, `/uploads/`).
 - **Garajım**: `POST /favorites`, `GET /favorites`, `DELETE /favorites/{id}`
+- **Dahili (Swagger'da yok)**: `POST /cars/sub-models` — marka → model → alt model zincirini
+  büyük/küçük harf duyarsız bulur ya da oluşturur; `x-internal-token` başlığı `INTERNAL_API_TOKEN`
+  env ile eşleşmeli (env boşsa endpoint kapalı). Gövde: `brand`, `model` zorunlu; `name`, `trimName`,
+  `generation`, `yearFrom`, `yearTo`, `horsePower`, `engineCC`, `fuelType`, `transmission`, `bodyType`
+  isteğe bağlı. Ad verilmezse `"Model (gen) · trim (hp bg) yıl"` biçiminde üretilir; yakıt/şanzıman/kasa
+  verilmezse addan tahmin edilir. Yanıt her seviyede `created` bayrağı taşır. Yorum pipeline'ı
+  (araba-yorum-pipeline) eşleşmeyen araçlar için bunu kullanır.
 
 ### Alt model alanları
 

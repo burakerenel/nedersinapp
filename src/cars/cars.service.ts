@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { ILike, Repository, SelectQueryBuilder } from 'typeorm';
 import { Brand } from './entities/brand.entity';
 import { CarModel } from './entities/car-model.entity';
 import { CarSubModel } from './entities/car-sub-model.entity';
@@ -8,6 +8,8 @@ import { Review } from '../reviews/review.entity';
 import { ApiException } from '../common/exceptions/api.exception';
 import { PaginatedResult, parsePage } from '../common/pagination';
 import { SearchCarsDto } from './dto/search-cars.dto';
+import { CreateSubModelDto } from './dto/create-sub-model.dto';
+import { parseSubModelName } from './sub-model-parser';
 import { CATEGORY_KEYS, CategoryKey } from '../reviews/dto/create-review.dto';
 
 export interface SubModelStats {
@@ -85,6 +87,24 @@ export function subModelFields(sub: CarSubModel) {
     year: sub.year,
     modelId: sub.modelId,
   };
+}
+
+/** "Egea (356) · 1.3 Multijet II (95 bg) 2016 - 2019" biçiminde ad üretir. */
+function composeSubModelName(
+  modelName: string,
+  dto: CreateSubModelDto,
+): string {
+  const gen = dto.generation?.trim();
+  const head = gen ? `${modelName} (${gen})` : modelName;
+  const trim = dto.trimName?.trim() || 'Genel';
+  const hp = dto.horsePower ? ` (${dto.horsePower} bg)` : '';
+  let years = '';
+  if (dto.yearFrom) {
+    years = dto.yearTo
+      ? ` ${dto.yearFrom} - ${dto.yearTo}`
+      : ` ${dto.yearFrom}`;
+  }
+  return `${head} · ${trim}${hp}${years}`;
 }
 
 @Injectable()
@@ -366,6 +386,82 @@ export class CarsService {
       reportCount: i.reportCount,
       severity: issueSeverity(i.reportCount, total),
     }));
+  }
+
+  // ---------- dahili: bul ya da oluştur ----------
+
+  /**
+   * Marka → model → alt model zincirini isme göre (büyük/küçük harf duyarsız)
+   * bulur, yoksa oluşturur. Alt model adı verilmezse trim/generation/yıl
+   * bilgisinden arabam.com biçiminde üretilir; yakıt/şanzıman/kasa verilmemişse
+   * addan tahmin edilir.
+   */
+  async createSubModel(dto: CreateSubModelDto) {
+    const brandName = dto.brand.trim();
+    const modelName = dto.model.trim();
+    if (
+      dto.yearFrom !== undefined &&
+      dto.yearTo !== undefined &&
+      dto.yearTo < dto.yearFrom
+    ) {
+      throw ApiException.validation('Yıl aralığı geçersiz', {
+        yearTo: 'yearFrom değerinden küçük olamaz',
+      });
+    }
+
+    let brandCreated = false;
+    let brand = await this.brandRepo.findOne({
+      where: { name: ILike(brandName) },
+    });
+    if (!brand) {
+      brand = await this.brandRepo.save(
+        this.brandRepo.create({ name: brandName }),
+      );
+      brandCreated = true;
+    }
+
+    let modelCreated = false;
+    let model = await this.carModelRepo.findOne({
+      where: { brandId: brand.id, name: ILike(modelName) },
+    });
+    if (!model) {
+      model = await this.carModelRepo.save(
+        this.carModelRepo.create({ name: modelName, brandId: brand.id }),
+      );
+      modelCreated = true;
+    }
+
+    const name = (dto.name ?? composeSubModelName(model.name, dto)).trim();
+    let subCreated = false;
+    let sub = await this.subModelRepo.findOne({
+      where: { modelId: model.id, name: ILike(name) },
+    });
+    if (!sub) {
+      const parsed = parseSubModelName(name, model.name);
+      sub = await this.subModelRepo.save(
+        this.subModelRepo.create({
+          name,
+          modelId: model.id,
+          engineCC: dto.engineCC ?? 0,
+          year: dto.yearFrom ?? 0,
+          trimName: dto.trimName?.trim() ?? parsed.trimName,
+          generation: dto.generation?.trim() ?? parsed.generation,
+          horsePower: dto.horsePower ?? parsed.horsePower,
+          yearFrom: dto.yearFrom ?? parsed.yearFrom,
+          yearTo: dto.yearTo ?? parsed.yearTo,
+          fuelType: dto.fuelType ?? parsed.fuelType,
+          transmission: dto.transmission ?? parsed.transmission,
+          bodyType: dto.bodyType ?? parsed.bodyType,
+        }),
+      );
+      subCreated = true;
+    }
+
+    return {
+      brand: { id: brand.id, name: brand.name, created: brandCreated },
+      model: { id: model.id, name: model.name, created: modelCreated },
+      subModel: { ...subModelFields(sub), created: subCreated },
+    };
   }
 
   // ---------- arama ----------

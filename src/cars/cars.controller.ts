@@ -1,6 +1,22 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
+import { InternalTokenGuard } from '../common/guards/internal-token.guard';
 import { CarsService } from './cars.service';
+import { CreateSubModelDto } from './dto/create-sub-model.dto';
 import { SearchCarsDto } from './dto/search-cars.dto';
 
 @ApiTags('cars')
@@ -55,6 +71,17 @@ export class CarsController {
   @ApiOperation({ summary: 'Get a model with its sub-models and review stats' })
   findModel(@Param('modelId', ParseUUIDPipe) modelId: string) {
     return this.carsService.findModelById(modelId);
+  }
+
+  /**
+   * Dahili: marka/model/alt model bul-ya-da-oluştur. Swagger'da listelenmez,
+   * `x-internal-token` başlığı (INTERNAL_API_TOKEN) ister.
+   */
+  @Post('sub-models')
+  @UseGuards(InternalTokenGuard)
+  @ApiExcludeEndpoint()
+  createSubModel(@Body() dto: CreateSubModelDto) {
+    return this.carsService.createSubModel(dto);
   }
 
   @Get('sub-models/:subModelId/issues')

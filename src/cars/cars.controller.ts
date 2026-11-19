@@ -18,6 +18,7 @@ import { InternalTokenGuard } from '../common/guards/internal-token.guard';
 import { CarsService } from './cars.service';
 import { CreateSubModelDto } from './dto/create-sub-model.dto';
 import { SearchCarsDto } from './dto/search-cars.dto';
+import { SearchModelsDto } from './dto/search-models.dto';
 
 @ApiTags('cars')
 @Controller('cars')
@@ -67,8 +68,29 @@ export class CarsController {
     return this.carsService.search(query);
   }
 
+  @Get('models/search')
+  @ApiOperation({
+    summary:
+      'Search models (one card per model, stats aggregated over its sub-models); q, brandId, bodyType, fuelType, sort, page, limit',
+  })
+  searchModels(@Query() query: SearchModelsDto) {
+    return this.carsService.searchModels(query);
+  }
+
+  @Get('models/:modelId/issues')
+  @ApiOperation({
+    summary:
+      'Chronic issues for a model (dislikedTopics across all its sub-models)',
+  })
+  findModelIssues(@Param('modelId', ParseUUIDPipe) modelId: string) {
+    return this.carsService.findIssuesByModel(modelId);
+  }
+
   @Get('models/:modelId')
-  @ApiOperation({ summary: 'Get a model with its sub-models and review stats' })
+  @ApiOperation({
+    summary:
+      'Get a model with aggregated review stats (all sub-models) plus its sub-models with their own stats',
+  })
   findModel(@Param('modelId', ParseUUIDPipe) modelId: string) {
     return this.carsService.findModelById(modelId);
   }
@@ -86,7 +108,8 @@ export class CarsController {
 
   @Get('sub-models/:subModelId/issues')
   @ApiOperation({
-    summary: 'Chronic issues for a sub-model (topics of reviews rated 1-3)',
+    summary:
+      'Chronic issues for a sub-model (dislikedTopics repeated in ≥2 visible reviews)',
   })
   findIssues(@Param('subModelId', ParseUUIDPipe) subModelId: string) {
     return this.carsService.findIssuesBySubModel(subModelId);

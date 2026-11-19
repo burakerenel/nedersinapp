@@ -26,6 +26,7 @@ import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { ListReviewsDto } from './dto/list-reviews.dto';
 import { ReviewResponseDto } from './dto/review-response.dto';
+import { ReportReviewDto } from './dto/report-review.dto';
 
 @ApiTags('reviews')
 @Controller('reviews')
@@ -39,6 +40,10 @@ export class ReviewsController {
     summary: 'Submit a review for a car sub-model (one per user per sub-model)',
   })
   @ApiResponse({ status: 201, type: ReviewResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'ContentNotAllowed / ValidationError',
+  })
   @ApiResponse({ status: 404, description: 'CarNotFound' })
   @ApiResponse({ status: 409, description: 'ReviewAlreadyExists' })
   create(@CurrentUser() user: User, @Body() dto: CreateReviewDto) {
@@ -63,9 +68,28 @@ export class ReviewsController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Current user's reviews" })
+  @ApiOperation({
+    summary: "Current user's reviews (hidden ones included, see `status`)",
+  })
   findMine(@CurrentUser() user: User) {
     return this.reviewsService.findByUser(user.id);
+  }
+
+  @Get('model/:modelId')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Reviews of a model across all its sub-models (public; token optional). Same filters as sub-model; each item carries `carSubModel`',
+  })
+  @ApiResponse({ status: 200, type: [ReviewResponseDto] })
+  @ApiResponse({ status: 404, description: 'NotFound' })
+  findByModel(
+    @CurrentUser() user: User | null,
+    @Param('modelId', ParseUUIDPipe) modelId: string,
+    @Query() query: ListReviewsDto,
+  ) {
+    return this.reviewsService.findByModel(modelId, query, user?.id ?? null);
   }
 
   @Get('sub-model/:carSubModelId')
@@ -94,6 +118,10 @@ export class ReviewsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Edit own review (all fields optional)' })
   @ApiResponse({ status: 200, type: ReviewResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'ContentNotAllowed / ValidationError',
+  })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'ReviewNotFound' })
   update(
@@ -116,6 +144,25 @@ export class ReviewsController {
   ) {
     await this.reviewsService.deleteReview(user.id, reviewId);
     return { message: 'Yorum silindi' };
+  }
+
+  @Post(':reviewId/report')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Report a review (one per user per review; 3 open reports auto-hide the review for moderation)',
+  })
+  @ApiResponse({ status: 201 })
+  @ApiResponse({ status: 403, description: 'CannotReportOwnReview' })
+  @ApiResponse({ status: 404, description: 'ReviewNotFound' })
+  @ApiResponse({ status: 409, description: 'ReportAlreadyExists' })
+  report(
+    @CurrentUser() user: User,
+    @Param('reviewId', ParseUUIDPipe) reviewId: string,
+    @Body() dto: ReportReviewDto,
+  ) {
+    return this.reviewsService.report(user.id, reviewId, dto);
   }
 
   @Post(':reviewId/like')

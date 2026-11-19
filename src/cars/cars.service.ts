@@ -9,6 +9,7 @@ import { ApiException } from '../common/exceptions/api.exception';
 import { PaginatedResult, parsePage } from '../common/pagination';
 import { SearchCarsDto } from './dto/search-cars.dto';
 import { CreateSubModelDto } from './dto/create-sub-model.dto';
+import { SearchModelsDto } from './dto/search-models.dto';
 import { parseSubModelName } from './sub-model-parser';
 import { CATEGORY_KEYS, CategoryKey } from '../reviews/dto/create-review.dto';
 
@@ -49,10 +50,26 @@ const FALLBACK_BRAND_ORDER = [
   'Peugeot',
 ];
 
-/** Kronik sorun sayılmak için konunun en az bu kadar 1-3 puanlı yorumda geçmesi gerekir. */
+/** Kronik sorun sayılmak için konunun en az bu kadar yorumda "sevilmeyen" olarak geçmesi gerekir. */
 export const MIN_ISSUE_REPORTS = 2;
 
-/** Kronik sorun: 1-3 puanlı yorumlarda geçen konu. Önem derecesi orana göre. */
+/** Sadece görünür yorumlar istatistiğe girer (#24). */
+const VISIBLE = `r.status = 'visible'`;
+
+/**
+ * İstatistik kapsamı: alt model (r.car_sub_model_id) ya da model (alt modeller
+ * üzerinden s.model_id). Aynı SQL iki düzeyde de çalışır (#32).
+ */
+type Scope = 'sub' | 'model';
+const SCOPE = {
+  sub: { join: '', key: 'r.car_sub_model_id' },
+  model: {
+    join: 'JOIN car_sub_models s ON s.id = r.car_sub_model_id',
+    key: 's.model_id',
+  },
+} as const;
+
+/** Kronik sorun: sevilmeyen konu olarak işaretlenen (dislikedTopics) konu. Önem derecesi orana göre. */
 export function issueSeverity(
   reportCount: number,
   totalReviews: number,
@@ -130,20 +147,33 @@ export class CarsService {
 
   /** Birden fazla alt model için tek sorguda yorum sayısı, ortalama ve sorun sayısı. */
   async statsFor(ids: string[]): Promise<Map<string, SubModelStats>> {
+    return this.statsByScope('sub', ids);
+  }
+
+  /** Model (kuşak) düzeyi: modelin tüm alt modelleri birlikte. */
+  async statsForModels(ids: string[]): Promise<Map<string, SubModelStats>> {
+    return this.statsByScope('model', ids);
+  }
+
+  private async statsByScope(
+    scope: Scope,
+    ids: string[],
+  ): Promise<Map<string, SubModelStats>> {
     const map = new Map<string, SubModelStats>();
     if (ids.length === 0) return map;
     for (const id of ids)
       map.set(id, { reviewCount: 0, averageRating: null, issueCount: 0 });
+    const { join, key } = SCOPE[scope];
 
     const base = await this.raw<{
       id: string;
       review_count: number;
       avg_rating: string | null;
     }>(
-      `SELECT r.car_sub_model_id AS id, COUNT(*)::int AS review_count, AVG(r.rating) AS avg_rating
-         FROM reviews r
-        WHERE r.car_sub_model_id = ANY($1::uuid[])
-        GROUP BY r.car_sub_model_id`,
+      `SELECT ${key} AS id, COUNT(*)::int AS review_count, AVG(r.rating) AS avg_rating
+         FROM reviews r ${join}
+        WHERE ${key} = ANY($1::uuid[]) AND ${VISIBLE}
+        GROUP BY ${key}`,
       [ids],
     );
     for (const row of base as {
@@ -158,14 +188,14 @@ export class CarsService {
 
     const issues = await this.raw<{ id: string; issue_count: number }>(
       `SELECT x.id, COUNT(*)::int AS issue_count
-         FROM (SELECT r.car_sub_model_id AS id, trim(t.topic) AS topic
-                 FROM reviews r
-                 CROSS JOIN LATERAL unnest(string_to_array(r.topics, ',')) AS t(topic)
-                WHERE r.car_sub_model_id = ANY($1::uuid[])
-                  AND r.rating <= 3
-                  AND COALESCE(r.topics, '') <> ''
+         FROM (SELECT ${key} AS id, trim(t.topic) AS topic
+                 FROM reviews r ${join}
+                 CROSS JOIN LATERAL unnest(string_to_array(r.disliked_topics, ',')) AS t(topic)
+                WHERE ${key} = ANY($1::uuid[])
+                  AND ${VISIBLE}
+                  AND COALESCE(r.disliked_topics, '') <> ''
                   AND trim(t.topic) <> ''
-                GROUP BY r.car_sub_model_id, trim(t.topic)
+                GROUP BY ${key}, trim(t.topic)
                HAVING COUNT(*) >= ${MIN_ISSUE_REPORTS}) x
         GROUP BY x.id`,
       [ids],
@@ -176,25 +206,133 @@ export class CarsService {
     return map;
   }
 
+  /** Sevilmeyen konu olarak en az MIN_ISSUE_REPORTS yorumda geçen konular. */
   private async issuesRaw(
-    subModelId: string,
+    scope: Scope,
+    id: string,
   ): Promise<{ topic: string; reportCount: number }[]> {
+    const { join, key } = SCOPE[scope];
     const rows = await this.raw<{ topic: string; report_count: number }>(
       `SELECT trim(t.topic) AS topic, COUNT(*)::int AS report_count
-         FROM reviews r
-         CROSS JOIN LATERAL unnest(string_to_array(r.topics, ',')) AS t(topic)
-        WHERE r.car_sub_model_id = $1
-          AND r.rating <= 3
-          AND COALESCE(r.topics, '') <> ''
+         FROM reviews r ${join}
+         CROSS JOIN LATERAL unnest(string_to_array(r.disliked_topics, ',')) AS t(topic)
+        WHERE ${key} = $1
+          AND ${VISIBLE}
+          AND COALESCE(r.disliked_topics, '') <> ''
           AND trim(t.topic) <> ''
         GROUP BY trim(t.topic)
        HAVING COUNT(*) >= ${MIN_ISSUE_REPORTS}
         ORDER BY report_count DESC, topic ASC`,
-      [subModelId],
+      [id],
     );
     return (rows as { topic: string; report_count: number }[]).map((r) => ({
       topic: r.topic,
       reportCount: r.report_count,
+    }));
+  }
+
+  private async topicCountsRaw(
+    scope: Scope,
+    id: string,
+    column: 'topics' | 'liked_topics' | 'disliked_topics',
+  ): Promise<Record<string, number>> {
+    const { join, key } = SCOPE[scope];
+    const rows = await this.raw<{ topic: string; c: number }>(
+      `SELECT trim(t.topic) AS topic, COUNT(*)::int AS c
+         FROM reviews r ${join}
+         CROSS JOIN LATERAL unnest(string_to_array(r.${column}, ',')) AS t(topic)
+        WHERE ${key} = $1 AND ${VISIBLE}
+          AND COALESCE(r.${column}, '') <> '' AND trim(t.topic) <> ''
+        GROUP BY trim(t.topic) ORDER BY c DESC, topic ASC`,
+      [id],
+    );
+    const out: Record<string, number> = {};
+    for (const row of rows) out[row.topic] = row.c;
+    return out;
+  }
+
+  /** Detay ve model sayfası için ortak toplu istatistikler. */
+  private async detailAggregates(scope: Scope, id: string) {
+    const { join, key } = SCOPE[scope];
+    const [
+      stats,
+      issues,
+      cat,
+      topicCounts,
+      likedTopicCounts,
+      dislikedTopicCounts,
+      ratingRows,
+    ] = await Promise.all([
+      this.statsByScope(scope, [id]),
+      this.issuesRaw(scope, id),
+      this.raw<Record<string, string | number | null>>(
+        `SELECT
+             ${CATEGORY_KEYS.map((k) => `AVG((r.category_ratings->>'${k}')::numeric) AS "${k}"`).join(', ')},
+             COUNT(r.category_ratings)::int AS cat_count,
+             COUNT(r.recommends)::int AS rec_count,
+             SUM(CASE WHEN r.recommends THEN 1 ELSE 0 END)::int AS rec_yes
+           FROM reviews r ${join} WHERE ${key} = $1 AND ${VISIBLE}`,
+        [id],
+      ),
+      this.topicCountsRaw(scope, id, 'topics'),
+      this.topicCountsRaw(scope, id, 'liked_topics'),
+      this.topicCountsRaw(scope, id, 'disliked_topics'),
+      this.raw<{ rating: number; c: number }>(
+        `SELECT r.rating, COUNT(*)::int AS c FROM reviews r ${join}
+            WHERE ${key} = $1 AND ${VISIBLE} AND r.rating BETWEEN 1 AND 5
+            GROUP BY r.rating ORDER BY r.rating`,
+        [id],
+      ),
+    ]);
+
+    const s = stats.get(id)!;
+    const catRow = cat[0] ?? {};
+    const catCount = Number(catRow.cat_count ?? 0);
+    const recCount = Number(catRow.rec_count ?? 0);
+
+    const categoryAverages =
+      catCount > 0
+        ? (Object.fromEntries(
+            CATEGORY_KEYS.map((k) => [k, round1(catRow[k] as string | null)]),
+          ) as Record<CategoryKey, number | null>)
+        : null;
+    const recommendPercent =
+      recCount > 0
+        ? Math.round((100 * Number(catRow.rec_yes ?? 0)) / recCount)
+        : null;
+
+    const ratingCounts: Record<string, number> = {};
+    for (const row of ratingRows) ratingCounts[String(row.rating)] = row.c;
+
+    const hasChronicIssue = issues.some(
+      (i) => issueSeverity(i.reportCount, s.reviewCount) === 'high',
+    );
+
+    return {
+      reviewCount: s.reviewCount,
+      averageRating: s.averageRating,
+      issueCount: issues.length,
+      hasChronicIssue,
+      categoryAverages,
+      recommendPercent,
+      topicCounts,
+      likedTopicCounts,
+      dislikedTopicCounts,
+      ratingCounts,
+    };
+  }
+
+  private issuesToDto(
+    prefix: string,
+    issues: { topic: string; reportCount: number }[],
+    total: number,
+  ): IssueDto[] {
+    return issues.map((i) => ({
+      id: `${prefix}-${i.topic}`,
+      title: i.topic,
+      description: ISSUE_DESCRIPTIONS[i.topic] ?? i.topic,
+      reportCount: i.reportCount,
+      severity: issueSeverity(i.reportCount, total),
     }));
   }
 
@@ -216,6 +354,7 @@ export class CarsService {
            FROM reviews r
            JOIN car_sub_models s ON s.id = r.car_sub_model_id
            JOIN car_models m ON m.id = s.model_id
+          WHERE ${VISIBLE}
           GROUP BY m.brand_id)
        SELECT b.id, b.name, b.logo, COALESCE(rc.c, 0)::int AS review_count
          FROM brands b LEFT JOIN rc ON rc.brand_id = b.id`,
@@ -254,35 +393,44 @@ export class CarsService {
     });
     if (!brand) throw ApiException.notFound('Marka bulunamadı');
 
-    const counts = await this.raw<{ model_id: string; c: number }>(
-      `SELECT s.model_id AS model_id, COUNT(*)::int AS c
-         FROM reviews r JOIN car_sub_models s ON s.id = r.car_sub_model_id
-         JOIN car_models m ON m.id = s.model_id
-        WHERE m.brand_id = $1
-        GROUP BY s.model_id`,
-      [id],
-    );
-    const byModel = new Map(counts.map((c) => [c.model_id, c.c]));
+    const stats = await this.statsForModels(brand.models.map((m) => m.id));
 
     return {
       ...brand,
       models: brand.models.map((m) => ({
         ...m,
-        reviewCount: byModel.get(m.id) ?? 0,
+        ...stats.get(m.id)!,
       })),
     };
   }
 
   // ---------- modeller / alt modeller ----------
 
+  /** Varlık kontrolü (yorum listesi için). */
+  async findModelByIdOnly(modelId: string): Promise<CarModel> {
+    const model = await this.carModelRepo.findOne({
+      where: { id: modelId },
+      relations: ['brand'],
+    });
+    if (!model) throw ApiException.notFound('Model bulunamadı', 'CarNotFound');
+    return model;
+  }
+
+  /**
+   * Model (kuşak) sayfası: alt modeller tekil istatistikleriyle + modelin
+   * tüm alt modelleri üzerinden toplu puan, sorun ve dağılımlar (#32).
+   */
   async findModelById(modelId: string) {
     const model = await this.carModelRepo.findOne({
       where: { id: modelId },
       relations: ['brand', 'subModels'],
     });
-    if (!model) throw ApiException.notFound('Model bulunamadı');
+    if (!model) throw ApiException.notFound('Model bulunamadı', 'CarNotFound');
 
-    const stats = await this.statsFor(model.subModels.map((s) => s.id));
+    const [stats, aggregates] = await Promise.all([
+      this.statsFor(model.subModels.map((s) => s.id)),
+      this.detailAggregates('model', modelId),
+    ]);
     const subModels = model.subModels
       .sort(
         (a, b) =>
@@ -291,7 +439,117 @@ export class CarsService {
       )
       .map((sub) => ({ ...subModelFields(sub), ...stats.get(sub.id)! }));
 
-    return { ...model, subModels };
+    return {
+      ...model,
+      subModelCount: subModels.length,
+      ...aggregates,
+      subModels,
+    };
+  }
+
+  async findIssuesByModel(modelId: string): Promise<IssueDto[]> {
+    await this.findModelByIdOnly(modelId);
+    const [issues, stats] = await Promise.all([
+      this.issuesRaw('model', modelId),
+      this.statsForModels([modelId]),
+    ]);
+    return this.issuesToDto(modelId, issues, stats.get(modelId)!.reviewCount);
+  }
+
+  /** Model düzeyinde arama: her model bir kart, istatistikler alt modellerin toplamı (#32). */
+  async searchModels(dto: SearchModelsDto) {
+    const { page, limit, offset } = parsePage(dto.page, dto.limit, {
+      defaultLimit: 20,
+      maxLimit: 50,
+    });
+
+    const qb = this.carModelRepo
+      .createQueryBuilder('model')
+      .innerJoinAndSelect('model.brand', 'brand');
+
+    const q = dto.q?.trim();
+    if (q) {
+      q.split(/\s+/).forEach((term, i) => {
+        const key = `term${i}`;
+        qb.andWhere(
+          `(brand.name ILIKE :${key} OR model.name ILIKE :${key} OR (brand.name || ' ' || model.name) ILIKE :${key})`,
+          { [key]: `%${term}%` },
+        );
+      });
+    }
+    if (dto.brandId)
+      qb.andWhere('model.brandId = :brandId', { brandId: dto.brandId });
+    if (dto.bodyType || dto.fuelType) {
+      // En az bir alt modeli filtreye uyan modeller
+      const parts: string[] = ['s.model_id = model.id'];
+      const params: Record<string, string> = {};
+      if (dto.bodyType) {
+        parts.push('s.body_type = :bodyType');
+        params.bodyType = dto.bodyType;
+      }
+      if (dto.fuelType) {
+        parts.push('s.fuel_type = :fuelType');
+        params.fuelType = dto.fuelType;
+      }
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM car_sub_models s WHERE ${parts.join(' AND ')})`,
+        params,
+      );
+    }
+
+    const total = await qb.getCount();
+
+    qb.leftJoin(
+      (sq) =>
+        sq
+          .select('s.model_id', 'model_id')
+          .addSelect('COUNT(r.id)', 'review_count')
+          .addSelect('AVG(r.rating)', 'avg_rating')
+          .from(Review, 'r')
+          .innerJoin(CarSubModel, 's', 's.id = r.car_sub_model_id')
+          .where(VISIBLE)
+          .groupBy('s.model_id'),
+      'rs',
+      'rs.model_id = model.id',
+    )
+      .addSelect('COALESCE(rs.review_count, 0)', 'review_count')
+      .addSelect('rs.avg_rating', 'avg_rating');
+
+    if (dto.sort === 'rating') {
+      qb.orderBy('avg_rating', 'DESC', 'NULLS LAST').addOrderBy(
+        'review_count',
+        'DESC',
+      );
+    } else {
+      qb.orderBy('review_count', 'DESC');
+    }
+    qb.addOrderBy('brand.name', 'ASC')
+      .addOrderBy('model.name', 'ASC')
+      .offset(offset)
+      .limit(limit);
+
+    const models = await qb.getMany();
+    const ids = models.map((m) => m.id);
+    const [stats, subCounts] = await Promise.all([
+      this.statsForModels(ids),
+      ids.length
+        ? this.raw<{ model_id: string; c: number }>(
+            `SELECT model_id, COUNT(*)::int AS c FROM car_sub_models
+              WHERE model_id = ANY($1::uuid[]) GROUP BY model_id`,
+            [ids],
+          )
+        : Promise.resolve([]),
+    ]);
+    const subCountMap = new Map(subCounts.map((r) => [r.model_id, r.c]));
+
+    const data = models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      brand: { id: m.brand.id, name: m.brand.name, logo: m.brand.logo ?? null },
+      subModelCount: subCountMap.get(m.id) ?? 0,
+      ...stats.get(m.id)!,
+    }));
+    return PaginatedResult.of(data, page, limit, total);
   }
 
   /** Varlık kontrolü (diğer servisler kullanır). */
@@ -306,86 +564,25 @@ export class CarsService {
 
   async findSubModelDetail(id: string) {
     const sub = await this.findSubModelByIdOnly(id);
-
-    const [stats, issues, cat, topicRows, ratingRows] = await Promise.all([
-      this.statsFor([id]),
-      this.issuesRaw(id),
-      this.raw<Record<string, string | number | null>>(
-        `SELECT
-           ${CATEGORY_KEYS.map((k) => `AVG((r.category_ratings->>'${k}')::numeric) AS "${k}"`).join(', ')},
-           COUNT(r.category_ratings)::int AS cat_count,
-           COUNT(r.recommends)::int AS rec_count,
-           SUM(CASE WHEN r.recommends THEN 1 ELSE 0 END)::int AS rec_yes
-         FROM reviews r WHERE r.car_sub_model_id = $1`,
-        [id],
-      ),
-      this.raw<{ topic: string; c: number }>(
-        `SELECT trim(t.topic) AS topic, COUNT(*)::int AS c
-           FROM reviews r CROSS JOIN LATERAL unnest(string_to_array(r.topics, ',')) AS t(topic)
-          WHERE r.car_sub_model_id = $1 AND COALESCE(r.topics,'') <> '' AND trim(t.topic) <> ''
-          GROUP BY trim(t.topic) ORDER BY c DESC, topic ASC`,
-        [id],
-      ),
-      this.raw<{ rating: number; c: number }>(
-        `SELECT r.rating, COUNT(*)::int AS c FROM reviews r
-          WHERE r.car_sub_model_id = $1 AND r.rating BETWEEN 1 AND 5
-          GROUP BY r.rating ORDER BY r.rating`,
-        [id],
-      ),
-    ]);
-
-    const s = stats.get(id)!;
-    const catRow = cat[0] ?? {};
-    const catCount = Number(catRow.cat_count ?? 0);
-    const recCount = Number(catRow.rec_count ?? 0);
-
-    const categoryAverages =
-      catCount > 0
-        ? (Object.fromEntries(
-            CATEGORY_KEYS.map((k) => [k, round1(catRow[k] as string | null)]),
-          ) as Record<CategoryKey, number | null>)
-        : null;
-    const recommendPercent =
-      recCount > 0
-        ? Math.round((100 * Number(catRow.rec_yes ?? 0)) / recCount)
-        : null;
-
-    const topicCounts: Record<string, number> = {};
-    for (const row of topicRows) topicCounts[row.topic] = row.c;
-    const ratingCounts: Record<string, number> = {};
-    for (const row of ratingRows) ratingCounts[String(row.rating)] = row.c;
-
-    const hasChronicIssue = issues.some(
-      (i) => issueSeverity(i.reportCount, s.reviewCount) === 'high',
-    );
-
+    const aggregates = await this.detailAggregates('sub', id);
     return {
       ...sub,
       ...subModelFields(sub),
-      reviewCount: s.reviewCount,
-      averageRating: s.averageRating,
-      issueCount: issues.length,
-      hasChronicIssue,
-      categoryAverages,
-      recommendPercent,
-      topicCounts,
-      ratingCounts,
+      ...aggregates,
     };
   }
 
   async findIssuesBySubModel(subModelId: string): Promise<IssueDto[]> {
     await this.findSubModelByIdOnly(subModelId);
-    const [issues, total] = await Promise.all([
-      this.issuesRaw(subModelId),
-      this.reviewRepo.count({ where: { carSubModelId: subModelId } }),
+    const [issues, stats] = await Promise.all([
+      this.issuesRaw('sub', subModelId),
+      this.statsFor([subModelId]),
     ]);
-    return issues.map((i) => ({
-      id: `${subModelId}-${i.topic}`,
-      title: i.topic,
-      description: ISSUE_DESCRIPTIONS[i.topic] ?? i.topic,
-      reportCount: i.reportCount,
-      severity: issueSeverity(i.reportCount, total),
-    }));
+    return this.issuesToDto(
+      subModelId,
+      issues,
+      stats.get(subModelId)!.reviewCount,
+    );
   }
 
   // ---------- dahili: bul ya da oluştur ----------
@@ -520,6 +717,7 @@ export class CarsService {
           .addSelect('COUNT(*)', 'review_count')
           .addSelect('AVG(r.rating)', 'avg_rating')
           .from(Review, 'r')
+          .where(VISIBLE)
           .groupBy('r.car_sub_model_id'),
       'rs',
       'rs.sub_id = sub.id',
@@ -560,8 +758,7 @@ export class CarsService {
   }
 
   async findPopular(limit = 10) {
-    const reviewCountSql =
-      '(SELECT COUNT(*) FROM reviews r WHERE r.car_sub_model_id = sub.id)';
+    const reviewCountSql = `(SELECT COUNT(*) FROM reviews r WHERE r.car_sub_model_id = sub.id AND ${VISIBLE})`;
     const subModels = await this.baseSubModelQuery()
       .addSelect(reviewCountSql, 'review_count')
       .where(`${reviewCountSql} > 0`)

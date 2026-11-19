@@ -4,15 +4,28 @@ import { ApiException } from '../../common/exceptions/api.exception';
 import { SocialProfile } from '../../users/users.service';
 
 /**
+ * NeDersin Google OAuth client ID'leri (Web, iOS, Android). Gizli değildir;
+ * `GOOGLE_CLIENT_IDS` env'i tanımlı değilse bunlar kullanılır, böylece
+ * deploy ortamında ayrıca ayar gerekmez.
+ */
+export const DEFAULT_GOOGLE_CLIENT_IDS = [
+  '656924009603-8k7nsj0jtreh2o50qsi5hlm3iunrs064.apps.googleusercontent.com', // Web
+  '656924009603-9agasf7n94f5ab76jvsniunu08j70dio.apps.googleusercontent.com', // iOS
+  '656924009603-1p0dphml6n27tt7d382057lmthstu48v.apps.googleusercontent.com', // Android
+];
+
+/**
  * Google ID token doğrulaması (google-auth-library).
- * GOOGLE_CLIENT_IDS: virgülle ayrılmış iOS + Android (+ web) client ID'leri;
+ * GOOGLE_CLIENT_IDS: virgülle ayrılmış client ID'leri (boşsa varsayılanlar);
  * token'ın `aud` alanı bunlardan biri olmalı.
  */
 @Injectable()
 export class GoogleAuthService {
   private readonly logger = new Logger(GoogleAuthService.name);
   private readonly client = new OAuth2Client();
-  private readonly audiences: string[] = (process.env.GOOGLE_CLIENT_IDS || '')
+  private readonly audiences: string[] = (
+    process.env.GOOGLE_CLIENT_IDS || DEFAULT_GOOGLE_CLIENT_IDS.join(',')
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

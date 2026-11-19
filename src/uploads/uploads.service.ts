@@ -207,8 +207,11 @@ export class UploadsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async urlsForReviews(reviewIds: string[]): Promise<Map<string, string[]>> {
-    const map = new Map<string, string[]>();
+  /** Yorum başına fotoğraflar (id + url), yükleme sırasına göre. */
+  async imagesForReviews(
+    reviewIds: string[],
+  ): Promise<Map<string, { id: string; url: string }[]>> {
+    const map = new Map<string, { id: string; url: string }[]>();
     if (!reviewIds.length) return map;
     const images = await this.imageRepo.find({
       where: { reviewId: In(reviewIds) },
@@ -217,10 +220,17 @@ export class UploadsService implements OnModuleInit, OnModuleDestroy {
     for (const img of images) {
       if (!img.reviewId) continue;
       const list = map.get(img.reviewId) ?? [];
-      list.push(img.url);
+      list.push({ id: img.id, url: img.url });
       map.set(img.reviewId, list);
     }
     return map;
+  }
+
+  async urlsForReviews(reviewIds: string[]): Promise<Map<string, string[]>> {
+    const imgs = await this.imagesForReviews(reviewIds);
+    return new Map(
+      [...imgs.entries()].map(([k, v]) => [k, v.map((i) => i.url)]),
+    );
   }
 
   /** 24 saat içinde yoruma bağlanmamış fotoğrafları siler. */

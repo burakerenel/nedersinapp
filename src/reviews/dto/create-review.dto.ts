@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsDefined,
@@ -140,15 +141,52 @@ export class CreateReviewDto {
     example: ['Motor', 'Konfor'],
     enum: VALID_TOPICS,
     isArray: true,
+    deprecated: true,
+    description:
+      'Eski tek liste. `likedTopics` / `dislikedTopics` verilmezse puana göre dağıtılır (1-2 → sevilmeyen, 4-5 → sevilen, 3 → sadece topics).',
   })
   @IsOptional()
   @IsArray({ message: 'liste olmalı' })
   @ArrayMaxSize(VALID_TOPICS.length, { message: 'çok fazla konu seçildi' })
+  @ArrayUnique({ message: 'aynı konu birden fazla kez seçildi' })
   @IsIn(VALID_TOPICS, {
     each: true,
     message: `şu değerlerden biri olmalı: ${VALID_TOPICS.join(', ')}`,
   })
   topics?: Topic[];
+
+  @ApiPropertyOptional({
+    example: ['Konfor', 'Yakıt'],
+    enum: VALID_TOPICS,
+    isArray: true,
+    description: 'Sevilen konular (dislikedTopics ile kesişemez)',
+  })
+  @IsOptional()
+  @IsArray({ message: 'liste olmalı' })
+  @ArrayMaxSize(VALID_TOPICS.length, { message: 'çok fazla konu seçildi' })
+  @ArrayUnique({ message: 'aynı konu birden fazla kez seçildi' })
+  @IsIn(VALID_TOPICS, {
+    each: true,
+    message: `şu değerlerden biri olmalı: ${VALID_TOPICS.join(', ')}`,
+  })
+  likedTopics?: Topic[];
+
+  @ApiPropertyOptional({
+    example: ['Şanzıman'],
+    enum: VALID_TOPICS,
+    isArray: true,
+    description:
+      'Sevilmeyen konular (likedTopics ile kesişemez). Kronik sorunlar sadece bunlardan üretilir.',
+  })
+  @IsOptional()
+  @IsArray({ message: 'liste olmalı' })
+  @ArrayMaxSize(VALID_TOPICS.length, { message: 'çok fazla konu seçildi' })
+  @ArrayUnique({ message: 'aynı konu birden fazla kez seçildi' })
+  @IsIn(VALID_TOPICS, {
+    each: true,
+    message: `şu değerlerden biri olmalı: ${VALID_TOPICS.join(', ')}`,
+  })
+  dislikedTopics?: Topic[];
 
   @ApiProperty({ type: CategoryRatingsDto })
   @IsDefined({ message: 'zorunlu' })

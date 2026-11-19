@@ -6,14 +6,13 @@ import {
   MinLength,
   IsBoolean,
   Equals,
-  Matches,
   MaxLength,
 } from 'class-validator';
 import { Match } from '../../common/decorators/match.decorator';
 
-export const PASSWORD_RULE = /(?=.*[A-Z])(?=.*[0-9])/;
-export const PASSWORD_RULE_MESSAGE =
-  'en az bir büyük harf ve bir rakam içermeli';
+/** Parola kuralı (iş listesi #27): en az 6 karakter; büyük harf / rakam zorunlu değil. */
+export const PASSWORD_MIN_LENGTH = 6;
+export const PASSWORD_MIN_LENGTH_MESSAGE = `en az ${PASSWORD_MIN_LENGTH} karakter olmalı`;
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Ahmet' })
@@ -32,13 +31,12 @@ export class CreateUserDto {
   @IsEmail({}, { message: 'geçerli bir e-posta adresi olmalı' })
   email: string;
 
-  @ApiProperty({ example: 'P@ssw0rd123', minLength: 8 })
+  @ApiProperty({ example: 'parola1', minLength: PASSWORD_MIN_LENGTH })
   @IsString({ message: 'metin olmalı' })
-  @MinLength(8, { message: 'en az 8 karakter olmalı' })
-  @Matches(PASSWORD_RULE, { message: PASSWORD_RULE_MESSAGE })
+  @MinLength(PASSWORD_MIN_LENGTH, { message: PASSWORD_MIN_LENGTH_MESSAGE })
   password: string;
 
-  @ApiProperty({ example: 'P@ssw0rd123' })
+  @ApiProperty({ example: 'parola1' })
   @IsString({ message: 'metin olmalı' })
   @Match('password', { message: 'şifre ile eşleşmiyor' })
   passwordConfirmation: string;

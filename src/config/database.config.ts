@@ -1,4 +1,5 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import * as path from 'path';
 
 /**
  * Şema senkronizasyonu: NODE_ENV production değilse açık (mevcut davranış).
@@ -14,6 +15,11 @@ export const databaseConfig = (): TypeOrmModuleOptions => ({
   database: process.env.DB_NAME,
   ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
   autoLoadEntities: true,
+  // Şema değişiklikleri src/migrations altında; her açılışta bekleyenler
+  // otomatik uygulanır (deploy'da elle iş yok). Migration'lar idempotent.
+  migrations: [path.join(__dirname, '..', 'migrations', '*.{js,ts}')],
+  migrationsRun: true,
+  migrationsTransactionMode: 'each',
   synchronize:
     process.env.DB_SYNC === 'true' ||
     (process.env.DB_SYNC !== 'false' && process.env.NODE_ENV !== 'production'),

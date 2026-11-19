@@ -15,6 +15,13 @@ import { ReviewLike } from './entities/review-like.entity';
 import { ReviewImage } from '../uploads/review-image.entity';
 import { CategoryRatings, UsageDuration } from './dto/create-review.dto';
 
+export const REVIEW_STATUSES = ['visible', 'hidden'] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+
+/** Gizleme nedeni: otomatik (3 ayrı şikayet) ya da yönetim kararı. */
+export const HIDDEN_REASONS = ['auto_reports', 'manual'] as const;
+export type HiddenReason = (typeof HIDDEN_REASONS)[number];
+
 @Entity('reviews')
 @Index(['userId', 'carSubModelId'])
 export class Review {
@@ -33,8 +40,33 @@ export class Review {
   @Column({ nullable: true, type: 'int' })
   kilometer: number | null;
 
+  /** Tüm konular (liked + disliked birleşimi; eski kayıtlarda tek liste). Arama ve `topic` filtresi bunu kullanır. */
   @Column({ type: 'simple-array', nullable: true })
   topics: string[];
+
+  /** Sevilen konular (iş listesi #31). */
+  @Column({ name: 'liked_topics', type: 'simple-array', nullable: true })
+  likedTopics: string[] | null;
+
+  /** Sevilmeyen konular; kronik sorunlar yalnızca bundan üretilir. */
+  @Column({ name: 'disliked_topics', type: 'simple-array', nullable: true })
+  dislikedTopics: string[] | null;
+
+  /** `hidden` yorum herkese açık listelerde ve istatistiklerde yer almaz (iş listesi #24). */
+  @Index()
+  @Column({ type: 'varchar', length: 10, default: 'visible' })
+  status: ReviewStatus;
+
+  @Column({
+    name: 'hidden_reason',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  hiddenReason: HiddenReason | null;
+
+  @Column({ name: 'hidden_at', type: 'timestamp', nullable: true })
+  hiddenAt: Date | null;
 
   /** 6 kategori puanı: comfort, interior, performance, value, exterior, reliability (1-5). */
   @Column({ name: 'category_ratings', type: 'jsonb', nullable: true })

@@ -42,8 +42,17 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('NedersinApp API')
     .setDescription('NedersinApp REST API Documentation')
-    .setVersion('1.1')
+    .setVersion('1.2')
     .addBearerAuth()
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-internal-token',
+        in: 'header',
+        description: 'INTERNAL_API_TOKEN env değeri (yönetim uçları)',
+      },
+      'internal',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
